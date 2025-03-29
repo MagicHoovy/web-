@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remote Charger Availability Control</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .card {
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .charger-card {
+            border-radius: 8px;
+            transition: transform 0.2s ease;
+        }
+        .charger-card:hover {
+            transform: translateY(-5px);
+        }
+        .status-operative {
+            background-color: #d1e7dd;
+            color: #0f5132;
+        }
+        .status-inoperative {
+            background-color: #f8d7da;
+            color: #842029;
+        }
+        .form-switch {
+            padding-left: 2.5em;
+        }
+        .form-switch .form-check-input {
+            width: 3em;
+            height: 1.5em;
+            margin-left: -2.5em;
+        }
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #3498db;
+            width: 20px;
+            height: 20px;
+            -webkit-animation: spin 2s linear infinite;
+            animation: spin 2s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        .api-settings {
+            background-color: #f8f9fa;
+            border-left: 4px solid #0d6efd;
+        }
+        @-webkit-keyframes spin {
+            0% { -webkit-transform: rotate(0deg); }
+            100% { -webkit-transform: rotate(360deg); }
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="py-3 mb-4 border-bottom">
+            <h1 class="text-center">Remote Charger Availability Control</h1>
+        </header>
+
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">API Connection Settings</h5>
+                    </div>
+                    <div class="card-body api-settings">
+                        <form id="api-settings-form" class="row g-3">
+                            <div class="col-md-6">
+                                <label for="api-url" class="form-label">API URL</label>
+                                <input type="url" class="form-control" id="api-url" value="http://localhost:5000" required>
+                                <div class="form-text">The URL of the Flask API server (including port)</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="test-connection" class="form-label d-block">&nbsp;</label>
+                                <button type="button" id="test-connection" class="btn btn-outline-primary">Test Connection</button>
+                                <button type="button" id="save-settings" class="btn btn-success ms-2">Save Settings</button>
+                            </div>
+                            <div class="col-12">
+                                <div id="connection-status"></div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">Add Custom Charger</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="add-charger-form" class="row g-3">
+                            <div class="col-md-4">
+                                <label for="charger-id" class="form-label">Charger ID</label>
+                                <input type="text" class="form-control" id="charger-id" value="CDJ940009" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="charger-name" class="form-label">Charger Name</label>
+                                <input type="text" class="form-control" id="charger-name" value="Custom Charger" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label for="connector-id" class="form-label">Connector ID</label>
+                                <select class="form-select" id="connector-id">
+                                    <option value="0" selected>All (0)</option>
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label d-block">&nbsp;</label>
+                                <button type="submit" class="btn btn-primary w-100">Add Charger</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Charger List</h5>
+                        <button id="refresh-chargers" class="btn btn-sm btn-outline-primary">Refresh List</button>
+                    </div>
+                    <div class="card-body">
+                        <div id="chargers-container" class="row">
+                            <!-- Chargers will be populated here -->
+                            <div class="col-12 text-center py-4">
+                                <div class="loader"></div> Loading chargers...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">API Request Log</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-secondary overflow-auto" style="max-height: 200px;" id="request-log">
+                            <p class="mb-1">Log initialized...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div class="toast-container">
+        <div id="notification-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header">
+                <strong class="me-auto" id="toast-title">Notification</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body" id="toast-message">
+                Message here
+            </div>
+        </div>
+    </div>
+
+    <!-- Charger card template -->
+    <template id="charger-template">
+        <div class="col-lg-4 col-md-6 mb-4">
+            <div class="card charger-card">
+                <div class="card-header">
+                    <h5 class="charger-name mb-0">Charger Name</h5>
+                </div>
+                <div class="card-body">
+                    <p class="charger-id mb-1">ID: <span>CDJ940000</span></p>
+                    <p class="last-update mb-2 text-muted small">Last updated: <span>-</span></p>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="status">
+                            <span class="badge rounded-pill status-badge">Status</span>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input availability-toggle" type="checkbox" role="switch">
+                            <label class="form-check-label">Availability</label>
+                        </div>
+                    </div>
+                    <div class="mt-2 operation-status"></div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // DOM elements
+            const chargersContainer = document.getElementById('chargers-container');
+            const chargerTemplate = document.getElementById('charger-template');
+            const addChargerForm = document.getElementById('add-charger-form');
+            const refreshButton = document.getElementById('refresh-chargers');
+            const notificationToast = document.getElementById('notification-toast');
+            const toastTitle = document.getElementById('toast-title');
+            const toastMessage = document.getElementById('toast-message');
+            const apiUrlInput = document.getElementById('api-url');
+            const testConnectionButton = document.getElementById('test-connection');
+            const saveSettingsButton = document.getElementById('save-settings');
+            const connectionStatus = document.getElementById('connection-status');
+            const requestLog = document.getElementById('request-log');
+            
+            // Bootstrap toast object
+            const toast = new bootstrap.Toast(notificationToast);
+            
+            // API URL - get from localStorage or default to localhost
+            let apiUrl = localStorage.getItem('apiUrl') || 'http://localhost:5000';
+            apiUrlInput.value = apiUrl;
+            
+            // Log API requests
+            function logRequest(method, endpoint, data, response) {
+                const timestamp = new Date().toLocaleTimeString();
+                const logEntry = document.createElement('p');
+                logEntry.className = 'mb-1';
+                logEntry.innerHTML = `<strong>${timestamp}</strong> - ${method} ${endpoint}<br>`;
+                
+                if (data) {
+                    logEntry.innerHTML += `<span class="text-muted">Request: ${JSON.stringify(data)}</span><br>`;
+                }
+                
+                if (response) {
+                    const statusClass = response.success ? 'text-success' : 'text-danger';
+                    logEntry.innerHTML += `<span class="${statusClass}">Response: ${JSON.stringify(response)}</span>`;
+                }
+                
+                requestLog.prepend(logEntry);
+            }
+            
+            // Show notification
+            function showNotification(title, message, type = 'success') {
+                toastTitle.textContent = title;
+                toastMessage.textContent = message;
+                notificationToast.className = 'toast';
+                notificationToast.classList.add(`text-bg-${type}`);
+                toast.show();
+            }
+            
+            // Test API connection
+            testConnectionButton.addEventListener('click', function() {
+                const testUrl = apiUrlInput.value;
+                connectionStatus.innerHTML = '<div class="alert alert-info">Testing connection...</div>';
+                
+                fetch(`${testUrl}/api/get_chargers`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! Status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        connectionStatus.innerHTML = '<div class="alert alert-success">Connection successful! API is responding.</div>';
+                        showNotification('Success', 'API connection successful', 'success');
+                        logRequest('GET', '/api/get_chargers', null, { success: true, chargers: data.length });
+                    })
+                    .catch(error => {
+                        connectionStatus.innerHTML = `<div class="alert alert-danger">Connection failed: ${error.message}</div>`;
+                        showNotification('Error', 'API connection failed: ' + error.message, 'danger');
+                        logRequest('GET', '/api/get_chargers', null, { success: false, error: error.message });
+                    });
+            });
+            
+            // Save API settings
+            saveSettingsButton.addEventListener('click', function() {
+                apiUrl = apiUrlInput.value;
+                localStorage.setItem('apiUrl', apiUrl);
+                showNotification('Settings Saved', 'API URL has been saved', 'success');
+                loadChargers(); // Reload with new settings
+            });
+            
+            // Load chargers from the API
+            function loadChargers() {
+                chargersContainer.innerHTML = '<div class="col-12 text-center py-4"><div class="loader"></div> Loading chargers...</div>';
+                
+                fetch(`${apiUrl}/api/get_chargers`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! Status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(chargers => {
+                        logRequest('GET', '/api/get_chargers', null, { success: true, chargers: chargers });
+                        
+                        chargersContainer.innerHTML = '';
+                        
+                        if (chargers.length === 0) {
+                            chargersContainer.innerHTML = '<div class="col-12 text-center py-4">No chargers found</div>';
+                            return;
+                        }
+                        
+                        chargers.forEach(charger => {
+                            addChargerToUI(charger.id, charger.name, charger.status, charger.last_updated);
+                        });
+                    })
+                    .catch(error => {
+                        chargersContainer.innerHTML = '<div class="col-12 text-center py-4">Error loading chargers</div>';
+                        console.error('Error loading chargers:', error);
+                        showNotification('Error', 'Failed to load chargers: ' + error.message, 'danger');
+                        logRequest('GET', '/api/get_chargers', null, { success: false, error: error.message });
+                    });
+            }
+            
+            // Add a charger to the UI
+            function addChargerToUI(chargerId, chargerName, status = 'OPERATIVE', lastUpdated = '') {
+                // Clone the template
+                const chargerCard = chargerTemplate.content.cloneNode(true);
+                
+                // Populate the card
+                chargerCard.querySelector('.charger-name').textContent = chargerName;
+                chargerCard.querySelector('.charger-id span').textContent = chargerId;
+                
+                const lastUpdateSpan = chargerCard.querySelector('.last-update span');
+                if (lastUpdated) {
+                    const date = new Date(lastUpdated);
+                    lastUpdateSpan.textContent = date.toLocaleString();
+                } else {
+                    lastUpdateSpan.textContent = 'Never';
+                }
+                
+                const statusBadge = chargerCard.querySelector('.status-badge');
+                statusBadge.textContent = status;
+                statusBadge.classList.add(status === 'OPERATIVE' ? 'status-operative' : 'status-inoperative');
+                
+                const toggleSwitch = chargerCard.querySelector('.availability-toggle');
+                toggleSwitch.checked = status === 'OPERATIVE';
+                toggleSwitch.dataset.chargerId = chargerId;
+                toggleSwitch.dataset.status = status;
+                
+                // Add event listener to toggle
+                toggleSwitch.addEventListener('change', handleToggle);
+                
+                // Add the card to the container
+                chargersContainer.appendChild(chargerCard);
+            }
+            
+            // Handle toggle change
+            function handleToggle(event) {
+                const toggle = event.target;
+                const chargerId = toggle.dataset.chargerId;
+                const newStatus = toggle.checked ? 'OPERATIVE' : 'INOPERATIVE';
+                const card = toggle.closest('.charger-card');
+                const operationStatus = card.querySelector('.operation-status');
+                const statusBadge = card.querySelector('.status-badge');
+                
+                // Prevent multiple clicks
+                toggle.disabled = true;
+                
+                // Show loading state
+                operationStatus.innerHTML = '<div class="loader"></div> Changing status...';
+                
+                // Get connector ID from the form (for simplicity, using the global one)
+                const connectorId = document.getElementById('connector-id').value;
+                
+                // Request data
+                const requestData = {
+                    charger_id: chargerId,
+                    connector_id: connectorId,
+                    new_state: newStatus
+                };
+                
+                // Call the API to change availability
+                fetch(`${apiUrl}/api/toggle_availability`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    logRequest('POST', '/api/toggle_availability', requestData, data);
+                    
+                    if (data.success) {
+                        // Update UI
+                        statusBadge.textContent = newStatus;
+                        statusBadge.className = 'badge rounded-pill status-badge';
+                        statusBadge.classList.add(newStatus === 'OPERATIVE' ? 'status-operative' : 'status-inoperative');
+                        toggle.dataset.status = newStatus;
+                        
+                        // Update last updated time
+                        const now = new Date();
+                        card.querySelector('.last-update span').textContent = now.toLocaleString();
+                        
+                        operationStatus.innerHTML = `<span class="text-success">✓ Changed to ${newStatus}</span>`;
+                        showNotification('Success', `Charger ${chargerId} set to ${newStatus}`, 'success');
+                    } else {
+                        // Revert toggle
+                        toggle.checked = !toggle.checked;
+                        operationStatus.innerHTML = `<span class="text-danger">✗ Error: ${data.message}</span>`;
+                        showNotification('Error', data.message, 'danger');
+                    }
+                })
+                .catch(error => {
+                    // Revert toggle
+                    toggle.checked = !toggle.checked;
+                    operationStatus.innerHTML = `<span class="text-danger">✗ Error: ${error.message}</span>`;
+                    showNotification('Connection Error', error.message, 'danger');
+                    console.error('Toggle error:', error);
+                    logRequest('POST', '/api/toggle_availability', requestData, { success: false, error: error.message });
+                })
+                .finally(() => {
+                    toggle.disabled = false;
+                });
+            }
+            
+            // Add Charger form submit
+            addChargerForm.addEventListener('submit', function(event) {
+                event.preventDefault();
+                
+                const chargerId = document.getElementById('charger-id').value;
+                const chargerName = document.getElementById('charger-name').value;
+                
+                // Check if this charger ID already exists
+                const existingCharger = document.querySelector(`.availability-toggle[data-charger-id="${chargerId}"]`);
+                if (existingCharger) {
+                    showNotification('Warning', `Charger with ID ${chargerId} already exists`, 'warning');
+                    return;
+                }
+                
+                // Add to UI
+                addChargerToUI(chargerId, chargerName, 'OPERATIVE');
+                showNotification('Success', `Added charger ${chargerName}`, 'success');
+                
+                // In a real app, you might want to send this to the server too
+                // For now, we're just adding it to the UI
+            });
+            
+            // Refresh button
+            refreshButton.addEventListener('click', loadChargers);
+            
+            // Initial load
+            loadChargers();
+        });
+    </script>
+</body>
+</html>
